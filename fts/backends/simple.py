@@ -9,7 +9,10 @@ from django.db import connection, transaction
 from django.db.models import Q, Max
 from django.core.cache import cache
 
-from snippets.decorators import commit_on_success_unless_managed
+# Fixes http://code.google.com/p/django-fts/issues/detail?id=7
+# Using http://djangosnippets.org/snippets/1725/
+# So we'll no longer use
+# from snippets.decorators import commit_on_success_unless_managed
 
 from fts.backends.base import BaseClass, BaseModel, BaseManager
 from fts.models import Word, Index, Namespace
@@ -33,6 +36,48 @@ SEP = re.compile(r'[\s,.()\[\]|]')
 
 _NAMESPACES_CACHE = {}
 _NAMESPACES_CACHE_SYNC = {}
+
+try:
+    from functools import wraps
+except ImportError:
+    from django.utils.functional import wraps  # Python 2.3, 2.4 fallback.
+
+def commit_on_success_unless_managed(func):
+    """
+    If the decorated function runs successfully, a commit is made, unless the
+    transactions are being managed; if the function produces an exception,
+    a rollback is made, again unless transactions are being managed somewhere
+    else.
+    """
+    def _commit_on_success_unless_managed(*args, **kw):
+        try:
+            if transaction.is_managed():
+                forced_managed = False
+            else:
+                transaction.enter_transaction_management()
+                forced_managed = True
+            
+            try:
+                res = func(*args, **kw)
+            except:
+                # All exceptions must be handled here (even string ones).
+                if transaction.is_dirty():
+                    if forced_managed:
+                        transaction.rollback()
+                    else:
+                        transaction.rollback_unless_managed()
+                raise
+            else:
+                if transaction.is_dirty():
+                    if forced_managed:
+                        transaction.commit()
+                    else:
+                        transaction.commit_unless_managed()
+            return res
+        finally:
+            if forced_managed:
+                transaction.leave_transaction_management()
+    return wraps(func)(_commit_on_success_unless_managed)
 
 class SearchClass(BaseClass):
     def __init__(self, server, params):
@@ -187,7 +232,7 @@ class SearchManager(BaseManager):
                             iw = c['IW'][word] = c['widx']
                             c['widx'] += 1
                         else:
-                        iw = Word.objects.get_or_create(word=word)[0]
+                            iw = Word.objects.get_or_create(word=word)[0]
                             c['IW'][word] = iw
                     if ord(weight) < ord(item_words.get(iw, 'Z')):
                         item_words[iw] = weight
