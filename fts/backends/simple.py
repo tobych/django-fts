@@ -145,7 +145,7 @@ class SearchManager(BaseManager):
         else:
             stem = lambda w: w
         # Get stemmed set of words not in the list of stop words and with a minimum of a minlen length
-        return set( stem(word) for word in words if word and word not in FTS_STOPWORDS[self.language_code] and len(word) > minlen )
+        return set( stem(word) for word in words if word and word not in FTS_STOPWORDS[self.language_code] and len(word) > minlen and len(word) <= 100)
         
     @commit_on_success_unless_managed
     def _update_index(self, pk, dumping=None):
