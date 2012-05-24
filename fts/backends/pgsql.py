@@ -1,5 +1,6 @@
 "Pgsql Fts backend"
-
+import django
+DJANGO_VERSION = django.VERSION
 from django.db import connection, transaction
 from django.db.models.fields import FieldDoesNotExist
 
@@ -41,10 +42,15 @@ class VectorField(models.Field):
 class SearchClass(BaseClass):
     def __init__(self, server, params):
         from django.conf import settings
-        
-        if not settings.DATABASE_ENGINE in ['postgresql', 'postgresql_psycopg2']:
-            raise InvalidFtsBackendError("PostgreSQL with tsearch2 support is needed to use the pgsql FTS backend")
-        
+        if (DJANGO_VERSION[0] <= 1) and (DJANGO_VERSION[1] <=3):
+            if not settings.DATABASE_ENGINE in ['postgresql', 'postgresql_psycopg2']:
+                raise InvalidFtsBackendError("PostgreSQL with tsearch2 support is needed to use the pgsql FTS backend")
+        else:
+            databases = []
+            for database in settings.DATABASES.values():
+                databases.append(database['ENGINE'])
+            if not databases in ['postgresql', 'postgresql_psycopg2','django.db.backends.postgresql_psycopg2']:
+                raise InvalidFtsBackendError("PostgreSQL with tsearch2 support is needed to use the pgsql FTS backend")
         self.backend = 'pgsql'
 
 class SearchManager(BaseManager):
